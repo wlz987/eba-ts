@@ -8,10 +8,12 @@ export {
   SeqIdGen,
   UuidIdGen,
   errPayload,
+  errPayloadCode,
   isResultErr,
   isResultOk,
   makeEnvelope,
   okPayload,
+  resultCode,
   resultError,
   resultValue,
 } from "./envelope/index.ts";

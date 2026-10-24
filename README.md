@@ -22,6 +22,7 @@
 - 回信同主题一组、按进入顺序一封一封发；发布失败重试一次，第二次埋没，等 `close` 交还。
   收件箱收不下是背压（`MailboxFull`），不是投递故障。
 - `close` 返回未认领的信；半途失败停在 `closing`，最后一次 `close` 收齐。
+- 错误结果可带一个域自定义的整数 `code`（`err_payload_code` / `result_code`）；EBA 只透传，不解释。
 - 投递失败两次时，以 `delivery_failed` 结清它所回答的等待；钩子不答时补 `job_silent`。
 - 读钟失败只结束这一轮，不扣住运行时：下一次 `advance` 仍能开。
 

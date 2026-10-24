@@ -28,11 +28,13 @@ export { Matchmaker } from "./reply.ts";
 export {
   Completion,
   errPayload,
+  errPayloadCode,
   hasResultShape,
   isResultErr,
   isResultOk,
   okPayload,
   resultBody,
+  resultCode,
   resultError,
   resultRequestId,
   resultValue,

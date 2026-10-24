@@ -1,7 +1,7 @@
 import type { Envelope } from "./envelope.ts";
 import type { EnvelopeId } from "./ids.ts";
 
-const RESERVED = new Set(["ok", "error", "value"]);
+const RESERVED = new Set(["ok", "error", "value", "code"]);
 
 export class Completion {
   readonly requestId: EnvelopeId;
@@ -23,13 +23,32 @@ export function errPayload(
   error: string,
   detail?: Record<string, unknown>,
 ): Record<string, unknown> {
+  return makeErr(error, detail, null);
+}
+
+export function errPayloadCode(
+  error: string,
+  code: number,
+  detail?: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!Number.isInteger(code)) throw new TypeError("code must be an integer");
+  return makeErr(error, detail, code);
+}
+
+function makeErr(
+  error: string,
+  detail: Record<string, unknown> | undefined,
+  code: number | null,
+): Record<string, unknown> {
   if (typeof error !== "string") throw new TypeError("error must be a string");
   const extra: Record<string, unknown> = detail ? { ...detail } : {};
   for (const key of Object.keys(extra)) {
     if (RESERVED.has(key))
       throw new RangeError(`reserved result key: ${JSON.stringify(key)}`);
   }
-  return { ok: false, error, ...extra };
+  const body: Record<string, unknown> = { ok: false, error, ...extra };
+  if (code !== null) body["code"] = code;
+  return body;
 }
 
 function asRecord(body: unknown): Record<string, unknown> | null {
@@ -65,6 +84,13 @@ export function resultValue(body: Record<string, unknown>): unknown {
 export function resultError(body: Record<string, unknown>): string {
   if (!isResultErr(body)) throw new TypeError("result body is not Err");
   return body["error"] as string;
+}
+
+export function resultCode(body: unknown): number | null {
+  if (!isResultErr(body)) return null;
+  const record = asRecord(body);
+  const code = record?.["code"];
+  return typeof code === "number" && Number.isInteger(code) ? code : null;
 }
 
 export function resultBody(envelope: Envelope): Record<string, unknown> | null {
