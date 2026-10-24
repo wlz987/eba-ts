@@ -16,6 +16,17 @@ import { Inbox } from "../mail/inbox.ts";
 import { Pending } from "./signals.ts";
 import { RuntimeLifecycle } from "./lifecycle.ts";
 
+export interface HostStats {
+  active: number;
+  held: number;
+  queued: number;
+  pending: number;
+  rejected: number;
+  cancelErrors: number;
+  pendingCancels: number;
+  lastCancelError: string | null;
+}
+
 export interface RuntimeStats {
   hosts: number;
   active: number;
@@ -26,6 +37,7 @@ export interface RuntimeStats {
   cancelErrors: number;
   lastCancelError: string | null;
   pendingCancels: number;
+  hostsDetail: Record<string, HostStats>;
 }
 
 export class Runtime extends RuntimeLifecycle {
@@ -43,18 +55,30 @@ export class Runtime extends RuntimeLifecycle {
     let pending = 0;
     let rejected = 0;
     let cancelErrors = 0;
-    let lastCancelError: string | null = null;
     let pendingCancels = 0;
+    let lastCancelError: string | null = null;
+    const hostsDetail: Record<string, HostStats> = {};
     for (const host of this.hosts.values()) {
       const core = coreOf(host);
-      active += core.jobs.size;
-      held += core.held.size;
-      queued += core.queue.size;
-      pending += core.book.size;
-      rejected += core.rejectedCount;
-      cancelErrors += core.cancelErrors;
-      pendingCancels += core.cancelPending.size;
-      lastCancelError = core.lastCancelError ?? lastCancelError;
+      const detail: HostStats = {
+        active: core.jobs.size,
+        held: core.held.size,
+        queued: core.queue.size,
+        pending: core.book.size,
+        rejected: core.rejectedCount,
+        cancelErrors: core.cancelErrors,
+        pendingCancels: core.cancelPending.size,
+        lastCancelError: core.lastCancelError,
+      };
+      hostsDetail[String(core.sub.actorId)] = detail;
+      active += detail.active;
+      held += detail.held;
+      queued += detail.queued;
+      pending += detail.pending;
+      rejected += detail.rejected;
+      cancelErrors += detail.cancelErrors;
+      pendingCancels += detail.pendingCancels;
+      lastCancelError = detail.lastCancelError ?? lastCancelError;
     }
     return {
       hosts: this.hosts.size,
@@ -64,8 +88,9 @@ export class Runtime extends RuntimeLifecycle {
       pending,
       rejected,
       cancelErrors,
-      lastCancelError,
       pendingCancels,
+      lastCancelError,
+      hostsDetail,
     };
   }
 

@@ -28,6 +28,6 @@ export { Context, Job, JobHost, Reply } from "./job/index.ts";
 export { Bus, Inbox, Receiver } from "./mail/index.ts";
 export { Park } from "./park.ts";
 export { Pending, Runtime } from "./runtime/index.ts";
-export type { RuntimeStats } from "./runtime/index.ts";
+export type { HostStats, RuntimeStats } from "./runtime/index.ts";
 export { ManualClock, MonotonicClock } from "./time/index.ts";
 export type { Clock } from "./time/index.ts";
