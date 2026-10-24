@@ -15,6 +15,11 @@ export function seal(core: Core, job: Job): void {
 
 export function drop(core: Core, job: Job): void {
   const requestId = stateOf(job).root.header.id;
+  const reply = core.held.get(requestId);
+  if (reply !== undefined) {
+    reply.close();
+    core.held.delete(requestId);
+  }
   if (core.jobs.get(requestId) === job) core.jobs.delete(requestId);
 }
 

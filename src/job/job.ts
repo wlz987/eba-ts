@@ -31,6 +31,7 @@ export class State {
   lifecycle: Lifecycle = "new";
   notice: Notice = "open";
   replied = false;
+  held = false;
   replyBody: Record<string, unknown> | null = null;
   pendingControl: Control | null = null;
   constructor(root: Envelope, maxInflight: number) {

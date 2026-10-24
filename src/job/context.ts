@@ -48,6 +48,7 @@ export function requireActive(ctx: Context): Buffer {
 }
 
 export function putReply(buffer: Buffer, body: unknown): void {
+  if (buffer.hold !== null) throw new Error("job already held");
   if (buffer.job.root.header.address.kind !== "request") {
     throw new TypeError("root is not a request");
   }

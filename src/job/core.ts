@@ -5,6 +5,7 @@ import { readSignal } from "../mail/inbox.ts";
 import { Queue } from "../mail/queue.ts";
 import { Subscriber } from "../mail/subscriber.ts";
 import { parsePattern } from "../pattern/pattern.ts";
+import type { Reply } from "./reply.ts";
 import { nonnegativeInt, positiveInt } from "../time/numbers.ts";
 import type { Job } from "./job.ts";
 import { RequestBook } from "./book.ts";
@@ -36,6 +37,7 @@ export class Core {
   readonly signal: ReturnType<typeof readSignal>;
   readonly outbox: Outbox;
   readonly jobs = new Map<EnvelopeId, Job>();
+  readonly held = new Map<EnvelopeId, Reply>();
   readonly book = new RequestBook();
   phase = 0;
   busy = false;

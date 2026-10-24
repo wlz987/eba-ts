@@ -2,9 +2,11 @@ import type { Envelope } from "../../envelope/envelope.ts";
 import type { EnvelopeId } from "../../envelope/ids.ts";
 import type { ActorId } from "../../envelope/ids.ts";
 import type { IdGen } from "../../envelope/idgen.ts";
+import type { Core } from "../core.ts";
 import type { Job } from "../job.ts";
+import type { Reply } from "../reply.ts";
 import { Buffer } from "./buffer.ts";
-import { finishControl, mutate, requestIntent } from "./ops.ts";
+import { finishControl, holdBuffer, mutate, requestIntent } from "./ops.ts";
 import { bufferOf, buffers, putReply, stateOf } from "../context.ts";
 
 export class Context {
@@ -15,6 +17,7 @@ export class Context {
       replyTo: string;
       idGen: IdGen;
       pendingCount: number;
+      core: Core;
     },
   ) {
     buffers.set(
@@ -25,6 +28,7 @@ export class Context {
         options.replyTo,
         options.idGen,
         options.pendingCount,
+        options.core,
       ),
     );
   }
@@ -56,5 +60,8 @@ export class Context {
   }
   finish(body?: unknown): void {
     mutate(this, (buffer) => finishControl(buffer, body ?? null));
+  }
+  hold(): Reply {
+    return mutate(this, (buffer) => holdBuffer(buffer));
   }
 }

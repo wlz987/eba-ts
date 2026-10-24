@@ -54,6 +54,7 @@ export function silence(
       ? state.root.header.address.replyTo
       : null;
   if (
+    state.held ||
     state.replied ||
     state.root.header.address.kind !== "request" ||
     (replyTo === replyTopic(core.sub.inbox) &&

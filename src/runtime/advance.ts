@@ -4,6 +4,7 @@ import type { Core } from "../job/core.ts";
 import type { JobHost } from "../job/host.ts";
 import { coreOf } from "../job/host.ts";
 import { advanceHost, armClosedWaits } from "../job/pump.ts";
+import { resolveHeld } from "../job/held.ts";
 import { closeCount } from "../mail/inbox.ts";
 import { DeliveryError, WakeError } from "../errors.ts";
 import { RuntimeAdmission } from "./admission.ts";
@@ -52,6 +53,19 @@ export abstract class RuntimeAdvance extends RuntimeAdmission {
           throw error;
         } finally {
           this.sync(core);
+        }
+      }
+      for (const host of [...this.hosts.values()]) {
+        const core = coreOf(host);
+        if (core.state !== "running" && core.state !== "draining") continue;
+        try {
+          if (resolveHeld(core, this.bus, this.idGen)) {
+            this.sync(core);
+            progressed = true;
+          }
+        } catch (error) {
+          if (error instanceof DeliveryError) this.answerSpent(error, pinned);
+          throw error;
         }
       }
       const fault = this.agenda.takeFault();

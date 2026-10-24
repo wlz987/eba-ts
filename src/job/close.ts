@@ -6,9 +6,11 @@ import { Job, stateOf } from "./job.ts";
 import { releaseAttempts } from "./delivery.ts";
 import { heldCount, takeSeized } from "../mail/inbox.ts";
 import { finishJobs, settleInbound, settleLetter } from "./close/settle.ts";
+import { closeHeld } from "./held.ts";
 import { SIGNAL_MASK, enter, idle, recomputePause } from "./pump.ts";
 
 export function closeHost(core: Core, bus: Bus): Envelope[] {
+  closeHeld(core);
   if (core.state === "closed") return [...(core.abandoned ?? [])];
   enter(core, true);
   try {

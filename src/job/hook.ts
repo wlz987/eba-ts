@@ -35,6 +35,7 @@ export function runHook(
     replyTo: replyTopic(core.sub.inbox),
     idGen,
     pendingCount: core.book.count(root.header.id),
+    core,
   });
   let reply: Envelope | null = null;
   let control: Control | null = null;
@@ -46,6 +47,7 @@ export function runHook(
       commit = sealContext(ctx);
     }
     [reply, control] = commitTo(core, bus, clock, idGen, job, commit);
+    if (commit.hold !== null) return;
     if (control !== null) {
       if (reply === null) {
         [reply, control] = silence(core, job, idGen, control);
@@ -108,6 +110,7 @@ function commitTo(
 ): [Envelope | null, Control | null] {
   const root = stateOf(job).root;
   const state = stateOf(job);
+  if (commit.hold !== null) return [null, null];
   let reply: Envelope | null = null;
   if (commit.reply !== null) {
     reply = new Matchmaker(root.header).reply(

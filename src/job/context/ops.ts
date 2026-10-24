@@ -7,6 +7,7 @@ import type { Context } from "../context.ts";
 import { putReply, requireActive } from "../context.ts";
 import type { Buffer } from "./buffer.ts";
 import { Control, Intent } from "../context.ts";
+import { Reply } from "../reply.ts";
 
 export function requestIntent(
   buffer: Buffer,
@@ -15,6 +16,7 @@ export function requestIntent(
   payload: unknown,
   timeout: number | null,
 ): EnvelopeId {
+  if (buffer.hold !== null) throw new Error("job already held");
   if (buffer.control !== null || buffer.job.lifecycle !== "active") {
     throw new Error("job already finished");
   }
@@ -38,6 +40,7 @@ export function requestIntent(
 }
 
 export function finishControl(buffer: Buffer, body: unknown): void {
+  if (buffer.hold !== null) throw new Error("job already held");
   if (buffer.control !== null) return;
   if (body !== null) {
     if (buffer.job.root.header.address.kind === "request") {
@@ -62,4 +65,24 @@ export function mutate<T>(ctx: Context, action: (buffer: Buffer) => T): T {
   } finally {
     buffer.busy = false;
   }
+}
+
+
+export function holdBuffer(buffer: Buffer): Reply {
+  if (buffer.hold !== null) throw new Error("job already held");
+  if (buffer.control !== null || buffer.job.lifecycle !== "active")
+    throw new Error("job already finished");
+  if (buffer.job.root.header.address.kind !== "request")
+    throw new TypeError("root is not a request");
+  if (buffer.reply !== null || buffer.job.replied)
+    throw new Error("root already replied");
+  if (buffer.requests.length > 0 || buffer.pendingCount > 0)
+    throw new Error("cannot hold with pending requests");
+  if (buffer.idGen === null)
+    throw new Error("Context is valid only during its callback");
+  const reply = new Reply();
+  buffer.core.held.set(buffer.job.root.header.id, reply);
+  buffer.hold = reply;
+  buffer.job.held = true;
+  return reply;
 }

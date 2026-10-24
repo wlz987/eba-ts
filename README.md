@@ -25,6 +25,7 @@
 - 错误结果可带一个域自定义的整数 `code`（`err_payload_code` / `result_code`）；EBA 只透传，不解释。
 - 投递失败两次时，以 `delivery_failed` 结清它所回答的等待；钩子不答时补 `job_silent`。
 - 读钟失败只结束这一轮，不扣住运行时：下一次 `advance` 仍能开。
+- 服务端可在 `ctx.hold()` 扣住一个 request，稍后用 `Reply.send/fail` 写槽；`advance` 末尾结算。
 
 ## 与 eba-py 的结构差异（当前）
 
