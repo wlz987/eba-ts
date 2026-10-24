@@ -52,4 +52,3 @@ npm run example           # order 与 bus
 ## 边界
 
 - 按 ADR-0010，仓内没有测试；回归靠类型闸门、例子与根工作区的端口一致性 audit。
-- 撤走测试之前的差异对名账见 [`HISTORY.md`](HISTORY.md)。

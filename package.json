@@ -1,6 +1,6 @@
 {
   "name": "eba-ts",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "进程内、单写者、合作式的 EBA 运行时",
   "license": "MIT",
   "type": "module",
@@ -8,8 +8,7 @@
   "types": "dist/index.d.ts",
   "files": [
     "dist",
-    "README.md",
-    "HISTORY.md"
+    "README.md"
   ],
   "scripts": {
     "example": "node examples/order.ts && node examples/bus.ts",
