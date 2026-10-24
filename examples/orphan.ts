@@ -2,6 +2,7 @@ import { Bus, Inbox, Job, JobHost, ManualClock, Runtime, SeqIdGen } from "../src
 import type { Context } from "../src/job/job.ts";
 import type { Envelope } from "../src/envelope/envelope.ts";
 import { Caller } from "../src/job/index.ts";
+import { coreOf } from "../src/job/host.ts";
 import { settled } from "../src/job/call.ts";
 
 const finished: Array<Record<string, unknown> | null> = [];
@@ -74,13 +75,12 @@ runtime.add(
     patterns: ["active"],
   }),
 );
-runtime.add(
-  new BadHost({
-    actorId: "bad",
-    receiver: new Inbox(8).receiver(),
-    patterns: ["bad"],
-  }),
-);
+const badHost = new BadHost({
+  actorId: "bad",
+  receiver: new Inbox(8).receiver(),
+  patterns: ["bad"],
+});
+runtime.add(badHost);
 const caller = new Caller(new Inbox(8).receiver(), runtime.idGenRef);
 runtime.add(caller);
 const root = caller.admit({
@@ -158,6 +158,30 @@ if (
   badStats.lastCancelError !== "cleanup boom"
 ) {
   throw new Error(`orphan bad hook: ${JSON.stringify(badStats)}`);
+}
+
+const badCore = coreOf(badHost);
+const originalCancel = badCore.book.cancel.bind(badCore.book);
+let leaseCalls = 0;
+badCore.book.cancel = (owner) => {
+  leaseCalls += 1;
+  if (leaseCalls === 1) throw new Error("lease");
+  originalCancel(owner);
+};
+const leaseRoot = caller.admit({ topic: "bad", payload: {}, from: "orphan" });
+for (let index = 0; index < 8; index += 1) runtime.advance();
+const leaseCancelled = caller.cancel(leaseRoot.header.id);
+for (let index = 0; index < 12; index += 1) runtime.advance();
+const leaseStats = runtime.stats();
+badCore.book.cancel = originalCancel;
+if (
+  !leaseCancelled ||
+  leaseCalls !== 2 ||
+  badCore.jobs.size !== 0 ||
+  leaseStats.pendingCancels !== 0 ||
+  leaseStats.active !== 0
+) {
+  throw new Error(`orphan lease: ${JSON.stringify(leaseStats)} calls=${leaseCalls}`);
 }
 
 const payRoot = caller.admit({ topic: "orphan.work", payload: { n: 5 }, from: "orphan" });

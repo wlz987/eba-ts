@@ -5,6 +5,7 @@ import type { ActorId, EnvelopeId } from "../envelope/ids.ts";
 import type { Receiver } from "../mail/inbox.ts";
 import { readSignal } from "../mail/inbox.ts";
 import { Queue } from "../mail/queue.ts";
+import { stateOf } from "./context.ts";
 import { Subscriber } from "../mail/subscriber.ts";
 import { parsePattern } from "../pattern/pattern.ts";
 import type { Reply } from "./reply.ts";
@@ -47,6 +48,7 @@ export class Core {
   rejectedCount = 0;
   cancelErrors = 0;
   lastCancelError: string | null = null;
+  readonly cancelPending = new Set<EnvelopeId>();
   abandoned: Envelope[] | null = null;
   pending: Envelope | null = null;
   pendingJob: Job | null = null;
@@ -79,8 +81,23 @@ export class Core {
   cancelJobs(requestIds: EnvelopeId[]): void {
     for (const requestId of requestIds) {
       const job = this.jobs.get(requestId);
-      if (job !== undefined) cancelJob(this, job);
+      if (job === undefined) {
+        this.cancelPending.delete(requestId);
+        continue;
+      }
+      const state = stateOf(job);
+      if (state.lifecycle !== "active" || state.held) {
+        this.cancelPending.delete(requestId);
+        continue;
+      }
+      if (!cancelJob(this, job)) this.cancelPending.add(requestId);
     }
+  }
+
+  takePendingCancels(): EnvelopeId[] {
+    const found = [...this.cancelPending];
+    this.cancelPending.clear();
+    return found;
   }
 
   cancelQueued(requestIds: EnvelopeId[]): void {

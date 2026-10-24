@@ -20,6 +20,7 @@ export abstract class RuntimeAdvance extends RuntimeAdmission {
     const cancelled: EnvelopeId[] = [];
     for (const host of [...this.hosts.values()]) {
       cancelled.push(...coreOf(host).takeCancelled());
+      cancelled.push(...coreOf(host).takePendingCancels());
     }
     if (cancelled.length > 0) {
       for (const host of [...this.hosts.values()]) {

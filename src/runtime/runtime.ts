@@ -25,6 +25,7 @@ export interface RuntimeStats {
   rejected: number;
   cancelErrors: number;
   lastCancelError: string | null;
+  pendingCancels: number;
 }
 
 export class Runtime extends RuntimeLifecycle {
@@ -43,6 +44,7 @@ export class Runtime extends RuntimeLifecycle {
     let rejected = 0;
     let cancelErrors = 0;
     let lastCancelError: string | null = null;
+    let pendingCancels = 0;
     for (const host of this.hosts.values()) {
       const core = coreOf(host);
       active += core.jobs.size;
@@ -51,6 +53,7 @@ export class Runtime extends RuntimeLifecycle {
       pending += core.book.size;
       rejected += core.rejectedCount;
       cancelErrors += core.cancelErrors;
+      pendingCancels += core.cancelPending.size;
       lastCancelError = core.lastCancelError ?? lastCancelError;
     }
     return {
@@ -62,6 +65,7 @@ export class Runtime extends RuntimeLifecycle {
       rejected,
       cancelErrors,
       lastCancelError,
+      pendingCancels,
     };
   }
 
