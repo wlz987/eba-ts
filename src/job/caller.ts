@@ -19,9 +19,9 @@ const ADMIT = "sys.admit";
 
 export class Caller extends JobHost {
   readonly idGen: IdGen;
-  constructor(receiver: Receiver, idGen: IdGen, activeLimit = 256) {
+  constructor(receiver: Receiver, idGen: IdGen, activeLimit = 256, actorId = "caller") {
     super({
-      actorId: "caller",
+      actorId,
       receiver,
       patterns: [],
       activeLimit,
