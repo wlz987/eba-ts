@@ -16,10 +16,10 @@ export abstract class RuntimeAdvance extends RuntimeAdmission {
 
   advance(): boolean {
     this.enter();
-    const now = this.scheduleNow();
-    this.observed = now;
-    const pinned = pinClock(now);
     try {
+      const now = this.scheduleNow();
+      this.observed = now;
+      const pinned = pinClock(now);
       const noticed = closeCount();
       if (noticed !== this.noticedCloses) {
         this.noticedCloses = noticed;
@@ -67,7 +67,6 @@ export abstract class RuntimeAdvance extends RuntimeAdmission {
     }
   }
 
-
   private now(): number {
     if (this.readingClock) throw new Error("reentrant clock observation");
     this.readingClock = true;
@@ -82,5 +81,4 @@ export abstract class RuntimeAdvance extends RuntimeAdmission {
     if (this.observed !== null) return this.observed;
     return readClock(this.view);
   }
-
 }

@@ -1,6 +1,6 @@
 {
   "name": "eba-ts",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "进程内、单写者、合作式的 EBA 运行时",
   "license": "MIT",
   "type": "module",

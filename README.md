@@ -1,47 +1,53 @@
 # eba-ts
 
-进程内、单写者、合作式运行时。
+进程内、单写者、合作式的 EBA 运行时。TypeScript，Node ≥ 24。
 
-一次 request 会交给每一台受理它的 Host 执行。调用方认领最先被调度到的那份合法结果。多次执行带来的副作用是否幂等，由应用负责。超时只结束本地这一次等待。回调在返回前同步结束，Envelope 的 payload 在各 Job 之间共享。
+一次 request 交给每一台受理它的 Host 执行；调用方认领最先到的那份合法结果。副作用是否幂等，
+由应用负责；超时只结清本地这一次等待。回调在返回前同步结束；`Envelope` 的 payload 在各 Job
+之间共享、只读。一台运行时只有一位 `Caller`（actor id 固定为 `caller`），请求人身份由每次
+调用的 `from` 承载。
 
-## 与 `eba-py` 的差异
+## 骨架
 
-下面引用的 py 条目名以 `eba-py` 某一时刻的 HEAD 为准；py 的册子会改名、也会搬家。如今 `eba-py` 已没有 `tests/`：`b4204ec` 撤走的是 23 本、577 格；更早的 `25f95ff` 把当时那 51 本移到了 tag `hold-412`。所以书名若点到 `test_breach.py`、`test_contract.py` 这类不在 23 本里的册子，指的是 `hold-412` 那一代——两句都还能在 py 的历史里翻到原文，只是没有一个字留在 py 的工作树里。逐条「问不出」的账不在这里，在各个测试文件自己那段（`tests/*.test.ts` 顶部的注释）——两处对不上时，以文件头为准，这一节只讲结构性的那几处差别。
+`Runtime` 按轮次推进：`add` / `advance` / `close` 各占一次单写者窗口，一轮只读一次钟。每台
+`JobHost` 有四相（receive / expire / adopt / deliver）与按台预算，预算只在不空转的格花。
+`Drive` 把 `advance` 当异步循环跑，靠唤醒票与期限醒来，不轮询。`Bus` 路由信封，`Inbox`
+暂存信件，`Records` 记等待、回复路由与租约，`Outbox` 按主题组押回信。
 
-- 结局的形状、`Envelope` 的合法性、钩子的返回值都在运行时校验，与 `eba-py` 同一条规则：`invoke` 会拒绝一个返回 Promise 的钩子——但 JS 的 `async` 函数体在调用时已经开始执行，而 Python 的 coroutine 在被 `await` 前一步都不走，所以"观察者没有留下副作用"这一条无法移植；留下的是信，不是钩子。`test_fault_retain.py::test_async_factory_closes_the_rejected_coroutine` 因此换了个可查的形状：工厂交回一只被丢弃的 rejected promise，`adopt` 先 `catch` 掉它再抛 `TypeError`——py 盯的是「协程从没被 await」的警告，这边盯的是「这笔拒绝没人认领」，node 会替我们把没认领的那一笔当场判负。
-- `Bus` 是共享对象，`Runtime` 只引用它；覆写 `bus.subscribe` / `bus.publish` 因此是 `eba-py` 式的故障注入缝，本 crate 的测试就是这么用它的。`eba-rs` 侧没有可覆写的 `publish`，同一条缝由 `Bus::observe_publish` 承担。`Core.queue` 同理：`test_backpressure_park.py` 把 `queue.push` 换成永远不收，这边照抄一行 `core.queue.push = () => false`；`eba-rs` 的队列换不成会说谎的，同一条改踩真装满的那一格。`test_backpressure_park.py::test_a_letter_that_will_not_go_back_is_handed_to_close` 在此之上再套一层：把 `pump.restore` 也换成放不回去。`restore` 在这边是模块级的函数，绑在 `pump.ts` 的导入上，换不掉；而泵先问过队列有没有空位才取信，放回队头因此只会成功。同一句规则的可见面——被取出的信回不了箱，就当场记进 close 的名单，不算一次拒绝——由 `contract.test.ts` 的 `a request that cannot be snapshotted is kept for close` 钉着。
-- `test_liveness.py::test_closed_host_can_be_collected` 查的是 `weakref` 与全局 `_cores` 注册表；`cores` 在这里是 `WeakMap`，但 JS 的回收时机不可确定观测，`node --test` 也不保证跑到一次 GC。这条因此没有可写的断言，租约与唤醒的"关掉不留尾巴"由 liveness 的轮询断言承担；等价物在 `eba-rs` 侧用 `Rc::downgrade` 落成了测试。`test_a_host_whose_runtime_was_dropped_closes_itself` 卡在同样的地方：它要先确认真的那位主人已经不在了，才谈得上「再没人推进」这一格，而 JS 给不出这句「已经不在」；能查的那半条（主人没了它自己 close 得动、名单照样交还）在 `eba-rs` 侧落成了 `a_host_whose_runtime_was_dropped_closes_itself`，另外四条动词守卫仍归上面那张轮次账。
-- 同样查弱引用，但只查守望自己：`test_dropped_interest.py` 两条要的是"撒手的守望者不会被下一次叫醒唤回来"。`Watchers` 这里存 `WeakRef`，所以断言前得先真的收一次——`tests/harness.ts` 的 `reclaimed()` 让出一个宏任务再逼一次 `gc()`（`--expose-gc` 由 `node:v8` 当场打开），对齐 py 的 `del` + `gc.collect()`。`eba-rs` 侧同一句是 `drop`，回收由引用计数当场决定。
-- 游标的一相由 `pump.step` 直接交出来（与 `eba-rs` 的 `pump::step` 同一条）：`test_phase_contract.py` 踩的是 `_step(core, bus, clock, id_gen, phase, yielded)`，四相各就各位的规则在一整轮 `advance` 里量不出来——一轮走完 0→3，谁代发都只看见"发了一次"。
-- 作业生命周期只从 `job.become` 改：合法边写在 `eba-py` 的 `_EDGES` 里，这边同一张表、同名一个守卫，六处转移一处不落（`new→active`、`active→delivering`、`active|delivering→finished`、`finished→finished`）。py 违约抛 `RuntimeError`，这边抛 `Error`；`eba-rs` 因为 `become` 是 2024 edition 的关键字，同一句改叫 `set_lifecycle`。`ctx.request` 也照 py 要求作业正处在 `active`：delivering 那一段补不上新的请求。
-- `Drive` 的票据与两段相位旗是私有的：py 的书既拨 `drive._pumping`/`_releasing`，也当场造一只裸票据问它的四张脸。这边一次 `as unknown as` 交回同样的口子：四张脸在 `tests/wake-token.test.ts` 逐条对名——票据不能裸造，`WakeTicket` 到 `start()` 才生出来，于是从一只收过摊的泵手里接过来，泵临走立下的那面旗先兑掉。两段相位旗那一格是这边多问的：泵在动手与清算这两段里自己立的旗，不兑一次新的唤醒。`eba-rs` 侧 `Wake` 待在未导出的模块里，唯一的来路是 `Drive::wake_token`：四张脸里挂着人时的那两格对名，另外两格问的是 waiter 的身份，而那边挂人的就是 `wait` 这一段 future 自己，交不出手柄，记在 `tests/wake_token.rs` 的书头；`wait` 还自己落旗，所以「这一轮确实被叫过」在那边只能兑成「同一次叫醒不许吃两口」。 这一侧多立了一条，py 没有这一问：`Wake.wait` 在已经挂着人的时候直接抛 `Wake has one scheduler waiter`（`src/time/wake.ts:22`）。py 的 `_Ticket.arm`（`eba-py/eba/runtime/drive.py:58`）只是把 `_waiter` 换掉，从不拒绝第二个等待者——它靠泵的结构保证同一时刻只有一个人挂着。这条与 `eba-rs` 同惯例（`eba-rs/eba-rs/src/wake.rs:42` 的 panic，那边记在 `eba-rs/README.md`），盯的是实现自己有没有走偏，不是应用能 recover 的失败；三侧都没有问它的格子。
-- 泵的死法在 JS 里只能摆样子：没有从外面掐死一只协程的手。`externally closed pump ends the drive` 按协程退场后的形状摆好那两个字段（`ended` 与 `task`），`cancelled pump reports itself to the drive` 则让这一轮的 `advance` 抛出一只没结清的错——对应 py 从 `await` 处冒上来的 `CancelledError`。留下的是同一句规则：泵不在了就不许再开新信，等的人不会被晾着。`eba-rs` 侧这两条踩的是真手：`abort_pump()`。
-- `test_drive_exit.py::test_an_unanswered_call_is_closed_out_at_exit` 的道具换过：py 用一只什么都不做的钩子，靠调度抢在补答之前收工；这边 `start()` 的循环体先同步跑完一轮，静默补答会先把这一等结掉。于是派一封信给一只没人收件也没人撒手的箱子——「还欠着」这件事本身被造出来，验的还是同一句：收工要把这一等结掉。`eba-rs` 侧同理。
-- `test_drive.py::test_a_refused_cancel_waits_for_space_then_idle` 数的是取消被试了几次（`[2, 3]`）。这边数不出同样的数：`start()` 的循环体先同步跑完一轮，那一轮不算这次被推上去的 stop，轮数因此多一格。换成同一条规则的两面：还不上时这一笔仍欠着，被叫醒之后它一定还得回去——fake 用一个开关决定还不还得上，不再依赖调度。`eba-rs` 侧连 fake 都不必：装满的收件箱与 `busy` 的 Host 就是那两只真的门。
-- 泵的停放不轮询：`Clock.armsTimer()` 说这把钟不替它睡着（`ManualClock` 交回 `false`），泵就把期限交给那一张唤醒票，`delay() === 0` 却没推进时也不再空转一圈。这条与 py 同一条规则，只是 py 靠 `asyncio` 的 Event，这边靠 `WakeTicket`（`fire/consume/arm/disarm/expire` 一整套，py 的 `test_wake.py::TicketTests` 逐条对名）。
-- 结清的标记是一只 `WeakSet`：`noteSettled`/`isSettled` 记下哪些错误已经被结局付过账，泵据此决定这一只错误该不该停下自己。投递、唤醒、时钟这三类天生不算新账，跳过。`eba-rs` 侧同一件事是一只包一层的 `Settled`，配 `bare::<T>()` 看穿包装做类型断言。
-- py 的 `eba/job/turn.py` 是一张「谁的轮次」的账：`Runtime.add` 把 Host 登记成自己的，Host 上那些只属于轮次的动词（`bind/unbind/drain/begin_close/close_owned/notice_closed_inbox/take_abandoned/advance/withdraw/project`）动手前先问这张表——不在这张表上、表上站着别人、或拿的不是这一轮钉住的那把钟，一律 `runtime is the only writer`。这一侧没有这张表：`Runtime` 直接拿着 `coreOf(host)` 调模块函数，`JobHost` 上没有这批方法，也就没有可以守卫的入口；唯一漏在外面的一格是 `JobHost.close(bus)`，它反过来挡住已被收编的 Host。`on_step` 是这批里唯一不动账的一格：它只观察，因此不需要那张表，已按 py 补成 `JobHost.onStep`（`rs`/`infra` 是 `JobHost::on_step` 的默认空实现），`Runtime.advance` 每一轮替被点到的那几台走一次，没点到的不许跟着醒——见 `tests/cost.test.ts` 的 `observing a step changes nothing about the pump`。因此 `test_owned_verbs.py` 的 `test_each_owned_verb_refuses_an_unlisted_host`、`test_refused_verbs_left_the_host_untouched` 与 `test_runtime.py` 的 `runtime_is_the_only_writer_after_add`、`advance_refuses_any_clock_but_the_pinned_one`、`the_turn_is_not_a_runtime_attribute`、`overriding_advance_does_not_replace_the_pump`、`a_decorator_on_enter_still_advances` 都没有可写的形状（同一文件里的 `wait_uses_the_observed_instant` 落在 `runtime.test.ts`，`owned-verbs.test.ts` 落的是收件箱移交那一条）。`tests/route-roster.test.ts` 读的是 `stateOf(inbox).routes`：名册上站的是"哪台 Bus 还替我订着"，不是一笔订阅一格，所以两条 pattern 同一台 Bus 只算一格。
+## 承诺
 
-- 门面只有一张清单：`test_front_door.py::test_each_door_lists_exactly_what_it_holds` 在这一侧是真查——读源码里 `export { ... } from` 那份名单，和运行时的模块命名空间对表，门里门外必须是同一批名字，同一个名字在两扇门上必须是同一个对象（`tests/public-validators.test.ts`，条目名与 py 对齐）。另一条 `test_a_star_import_brings_in_exactly_the_list` 问的是「星号进口会不会绕过 `__all__`」：ESM 里没有第二条路——`import * as ns` 交回的键就是这份清单本身，没有可被绕开的那张表，所以这一问在这侧收成上面那一问。类型导出在运行时已被抹掉，量不到，那一半 `eba-rs` 交给 rustc。（原 `test_public_validators.py` 那三条的量法差异照旧：`1.0` 在 JS 就是 `1`，分数才是这里说得出口的「不是整数」；多传一个参数在 JS 不是错，于是 `UuidIdGen` 改查它交回的是不是 32 位十六进制。）
+- 请求三条出口：合法结果、期限到点（`body === null`）、取消。
+- 没设期限又没人接住的 request，期限就地记为已过（`ELAPSED`），下一步交回空结局；不会悬到
+  永远。设了期限的请求仍按期限走。
+- 回信同主题一组、按进入顺序一封一封发；发布失败重试一次，第二次埋没，等 `close` 交还。
+  收件箱收不下是背压（`MailboxFull`），不是投递故障。
+- `close` 返回未认领的信；半途失败停在 `closing`，最后一次 `close` 收齐。
+- 投递失败两次时，以 `delivery_failed` 结清它所回答的等待；钩子不答时补 `job_silent`。
+- 读钟失败只结束这一轮，不扣住运行时：下一次 `advance` 仍能开。
 
-- `test_suite_shape.py` 是对 py 自己的文件布局做的 AST 自检，两条都没有等价物。`test_the_main_guard_never_sits_in_the_middle_of_a_file` 守的是三种跑法（`python3 tests/那个文件`、pytest、unittest）必须看见同一批测试，而 `if __name__ == "__main__"` 夹在类中间就会让其中一种瞎掉；这边只有一条 `node --test`，跑到的就是文件里所有能跑到的，没有可分叉的那一格。`test_an_await_on_the_pump_always_carries_a_deadline` 守的是裸着押在泵上的 await 会把整套装死——这条纪律在这里仍是软约束：drive 的测试大多直接 `await pending.ready`，只有需要掐表的几处包了 `soon()`。`test_a_ledger_table_must_ask_the_names_it_lists` 问「表里点出来的每一格都要被问过」，py 靠扫 AST 看循环变量除了当 `subTest` 的标签之外有没有在正文里被读一次；这边没有那样的树可扫，也没有「只在标签上露面」这一格——`tsconfig.json` 的 `noUnusedLocals` 与 `noUnusedParameters` 在 `npx tsc --noEmit` 里就把它拦下（解构出来的循环元素没被读过同样是 TS6133）。`eba-rs` 侧同记这三条，那边是 `unused_variables`。
-- `test_ledger.py` 两格量的是 py 自己的量法：`measure/sweep.py` 全树挖一遍，`measure/ledger.py --write` 把还活着的格子连同原话存成 `measure/alive.json`，`the_snapshot_still_describes_this_tree` 问总数还对不对得上，`the_snapshot_records_a_sentence_for_every_alive_cell` 问每一处的原话还在不在原处——两句拦的是同一件事：拿旧记录的行号当今天的身份证。这边没有那份快照：`node --test` 一格一名，`npx tsc --noEmit` 会为搬走的名字说话，没有以行号为账的东西可以悄悄过期。`eba-rs` 侧同记这两格。
-- 随机世界的剧本机在这一边跑起来了：`tests/fuzz-machine.ts` 造世界并管着五张判据（`facts`、`leaks`、`orphanTimers`、`aliveLedger`、`lyingFlags`），`tests/fuzz.test.ts::random worlds settle every waiter` 是按手推的那一条，`tests/fuzz-drive.test.ts::the same worlds driven by a pump` 换 Drive 推。
-- `facts` 的一行分两栏：前 20 列是账，最后一列是就绪表的四位旗（`LEDGER_WIDTH`）。旗里只有 DELIVERY 能独自动一下——它是候选表的影子，而候选表在 py 自己的 `_leaks` 里就写着「不进 `_facts`：它们是手段不是目的」。捞一眼发现发不出去、把票重新押回守望，账本一个数字没换，`advance` 也就照 py 的 `"checked"` 不报进展。py 的 `_pump` 在那里拿整行问「账本动了一轮，advance 却不报进展」，于是踩响了自己定的那条律：换一批种子，同一台机器在 seed 424、459、682 就报这同一种失败。这边两问分开——「不就绪的一轮不许动账」连影子一起问，「动了就必须报进展」只问账的那 20 列。`eba-rs` 侧同一形状，见 `tests/machine/mod.rs` 的 `LEDGER_COLUMNS`。
+## 与 eba-py 的结构差异（当前）
 
-- `Runtime` 的 `state` 是私有的，所以 `test_lifecycle.py::test_shutdown_cannot_undo_a_close_underway` 在这边改查它能被观察的那一面：closing 的 Host 不会被 `shutdown` 退回 draining，最后一次 `close` 走完才算 closed。`eba-rs` 侧同一条换了同样的观察口；那三条"从回调里关停运行时"的把式（`test_shutdown_from_the_wake_that_admission_itself_strikes` 等）在 JS 里照常可写，在 Rust 里被借用纪律挡住。
-- `test_states.py` 六条在这一侧分两类。两条代码闸门照问，写在 `tests/states.test.ts`：`the_state_names_are_the_ones_the_code_moves_through`（py 从 `get_args(HostState)` 拿名册，而 `type HostState = ...` 在运行时被抹掉——这边的名册从 `src/job/core.ts` 那一行里认出来，被走到的格子从 `src/` 逐行认出来，读自己用的 `ownSource()` 在 `tests/harness.ts`）、`a_fresh_host_starts_at_the_receive_notch`（为此把 `pump.ts` 的 `PHASE_FLAG` 交到门外：图上第一条边要问得出，得能问第 0 格压着哪面旗）。四条文档闸门（`every_backticked_name_resolves`、`doc_keeps_one_blank_line`、`every_ledger_is_named_by_the_doc`、`every_diagram_state_is_named_by_prose_or_code`）问的是 py 自己那本 `states.md`：这一侧没有 mermaid 图，也没有能解析成名字的反引号清单，那一半规则由 README 的账与 tsc 承担；图上每一条边在此侧的落点，逐条写在各测试文件头的账目里。
-- `test_cost.py` 新长出的两道读自己的闸门同问在 `tests/cost.test.ts`。`sleep is only ever a yield`：py 数每一句 `x.sleep(...)`，参数必须是 0——睡一觉等下一圈，代价由所有人的 CPU 付；这一侧不睡，让出一拍的那一句叫 `yieldTurn()`（`drive.ts`），占墙钟的只有闹钟，而闹钟睡的是别人交给它的剩余毫秒。闸门因此问两句：`src/` 里不许出现 `sleep(`，而每一处 `setTimeout(` 的参数里不许出现字面量时长。`an endless loop shows its way out`：`while (true)` / `for (;;)` 的体内必须看得见 `break`/`return`——挖掉出路在这边同样是「挂死改成失败」，只是先由闸门红。
-- py 新成的一册 `test_reply.py`（等待的三条出口）写在 `tests/reply.test.ts`，五条照问。第六条 `a_conclusion_cannot_be_rewritten_after_it_leaves_the_ledger` 在这一侧问不出：py 的 `Completion` 是 `@dataclass(frozen=True)`，重写正文在运行时撞墙；这边全仓的账目类型都只写 `readonly`，没有哪一本单独在运行时立墙——这一句由 tsc 在编译期说话（`npx tsc --noEmit` 就是那道墙），运行时赋值是本仓一致的软约束形状。可查的那一半（交出来的正文就是原来那一个，不是它的副本）在 `a matched reply hands back the body it was answered with` 里按对象身份问着。
-- `test_parking.py` 新长的三条照问在 `tests/parking.test.ts`；为了问出 `the pending place is marked minus one`，`execution.ts` 的 `nextSendable` 与 py 的 `_next_sendable` 一样交到门外，理由同一句——停放的位置是账的一部分。py 的 -1 那一格在这边也写作 -1：`["pending", -1]`，取位置的人只问正负。
+- 没有「谁在写」的运行时表：`Runtime` 直接持有 `coreOf(host)` 调模块函数，`JobHost` 上没有
+  只属于轮次的动词；唯一露在外面的是 `JobHost.close(bus)`，它反过来拒绝已被收编的 Host。
+  `Runtime.advance` 用 `signal.boundTo(agenda)` 拒绝别的运行时。
+- `Bus` 是共享对象；覆写 `bus.subscribe` / `bus.publish` 是故障注入缝。
+- `Envelope` 在入口做快照与校验；payload 若是可变对象，由调用方自己保证只读。
+- 一只 `Wake` 只允许一个调度等待者，重复挂人直接抛错。
+- 已结清的错误记在一只 `WeakSet` 里，泵据此决定是否停下；投递、唤醒、时钟三类天生不算新账。
+- `WeakMap` / `WeakRef` 的回收时机不可确定观测，相关断言只能覆盖可观测的那一半。
 
-## 无路由
+## 命令
 
-`Bus.publish` 返回 `boolean`，`true` 表示有人接住了这封信。事件与结果没人认领时照常安静落地；request 不同，它欠一个答复。一条没设期限、又谁也没收到的 request，把期限就地记为已过（`time/deadlines.ts` 的 `ELAPSED`）：下一步交回空的结局（`completion.isTimeout`），而不是把等待悬到永远。设了期限的请求仍按期限走，`dependency_timeout` 的语义不变。
-
-因此超时只有一种含义：这封投递成功的信还没等到回音。没人收件不再伪装成"还在等"。覆写 `publish` 却不回报（返回 `undefined`）的路由器，一律按已投递处理，不凭空判定——与 `eba-py` 同一条软约束。
-
-```text
-npm test
-npm run example  # examples/order.ts 与 examples/bus.ts 的同形件，两份都跑
+```sh
+npm ci
+npx tsc --noEmit          # 类型闸门
+node examples/order.ts    # 两笔下单，一成一败
+npm run example           # order 与 bus
 ```
+
+四端例子在根工作区由 `make examples` 统一跑；本仓 CI 跑 `tsc --noEmit` 与 `examples/*.ts`。
+
+## 边界
+
+- 按 ADR-0010，仓内没有测试；回归靠类型闸门、例子与根工作区的端口一致性 audit。
+- 撤走测试之前的差异对名账见 [`HISTORY.md`](HISTORY.md)。
