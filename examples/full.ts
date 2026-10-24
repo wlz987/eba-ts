@@ -1,12 +1,12 @@
 import {
   Bus,
-  Caller,
   Inbox,
   MailboxFull,
   ManualClock,
   Runtime,
   SeqIdGen,
 } from "../src/index.ts";
+import { Caller } from "../src/job/index.ts";
 
 const runtime = new Runtime(new Bus(), new ManualClock(), new SeqIdGen());
 const caller = new Caller(new Inbox(1).receiver(), runtime.idGenRef);

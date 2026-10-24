@@ -1,4 +1,5 @@
-import { BackpressureError, Bus, Caller, Inbox, ManualClock, Runtime, SeqIdGen } from "../src/index.ts";
+import { BackpressureError, Bus, Inbox, ManualClock, Runtime, SeqIdGen } from "../src/index.ts";
+import { Caller } from "../src/job/index.ts";
 
 const runtime = new Runtime(new Bus(), new ManualClock(), new SeqIdGen());
 const caller = new Caller(new Inbox(8).receiver(), runtime.idGenRef, 1);

@@ -4,7 +4,6 @@ export {
   Completion,
   Envelope,
   EnvelopeBuildError,
-  Matchmaker,
   SeqIdGen,
   UuidIdGen,
   errPayload,
@@ -25,8 +24,8 @@ export {
   InvalidTopic,
   MailboxFull,
 } from "./errors.ts";
-export { Caller, Context, Job, JobHost, Reply } from "./job/index.ts";
+export { Context, Job, JobHost, Reply } from "./job/index.ts";
 export { Bus, Inbox, Receiver } from "./mail/index.ts";
-export { Drive, Pending, Runtime } from "./runtime/index.ts";
+export { Pending, Runtime } from "./runtime/index.ts";
 export { ManualClock, MonotonicClock } from "./time/index.ts";
 export type { Clock } from "./time/index.ts";

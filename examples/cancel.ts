@@ -1,4 +1,6 @@
-import { Bus, Caller, Drive, Inbox, ManualClock, Runtime, SeqIdGen } from "../src/index.ts";
+import { Bus, Inbox, ManualClock, Runtime, SeqIdGen } from "../src/index.ts";
+import { Caller } from "../src/job/index.ts";
+import { Drive } from "../src/runtime/drive.ts";
 
 const runtime = new Runtime(new Bus(), new ManualClock(), new SeqIdGen());
 const caller = new Caller(new Inbox(8).receiver(), runtime.idGenRef);

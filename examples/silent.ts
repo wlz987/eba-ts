@@ -1,7 +1,5 @@
 import {
   Bus,
-  Caller,
-  Drive,
   Inbox,
   Job,
   JobHost,
@@ -9,6 +7,8 @@ import {
   Runtime,
   SeqIdGen,
 } from "../src/index.ts";
+import { Caller } from "../src/job/index.ts";
+import { Drive } from "../src/runtime/drive.ts";
 import type { Envelope } from "../src/envelope/envelope.ts";
 import type { Context } from "../src/job/job.ts";
 
