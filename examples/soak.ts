@@ -49,14 +49,14 @@ class BadHost extends JobHost {
   }
 }
 
+const runtime = new Runtime(new Bus(), new ManualClock(), new SeqIdGen());
+runtime.add(new EchoHost({ actorId: "echo", receiver: new Inbox(64).receiver(), patterns: ["echo"] }));
+runtime.add(new HoldHost({ actorId: "hold", receiver: new Inbox(64).receiver(), patterns: ["hold"] }));
+runtime.add(new BadHost({ actorId: "bad", receiver: new Inbox(64).receiver(), patterns: ["bad"] }));
+const caller = new Caller(new Inbox(256).receiver(), runtime.idGenRef);
+runtime.add(caller);
 let cancelErrors = 0;
-for (let wave = 0; wave < 100; wave += 1) {
-  const runtime = new Runtime(new Bus(), new ManualClock(), new SeqIdGen());
-  runtime.add(new EchoHost({ actorId: "echo", receiver: new Inbox(64).receiver(), patterns: ["echo"] }));
-  runtime.add(new HoldHost({ actorId: "hold", receiver: new Inbox(64).receiver(), patterns: ["hold"] }));
-  runtime.add(new BadHost({ actorId: "bad", receiver: new Inbox(64).receiver(), patterns: ["bad"] }));
-  const caller = new Caller(new Inbox(256).receiver(), runtime.idGenRef);
-  runtime.add(caller);
+for (let wave = 0; wave < 1000; wave += 1) {
   const roots: Array<{ topic: string; root: Envelope }> = [];
   for (let index = 0; index < 20; index += 1) {
     const pick = Math.floor(random() * 3);
@@ -79,16 +79,16 @@ for (let wave = 0; wave < 100; wave += 1) {
   }
   for (let index = 0; index < 12; index += 1) runtime.advance();
   const stats = runtime.stats();
-  if (stats.active || stats.held || stats.pending || stats.queued) {
+  if (stats.active || stats.held || stats.pending || stats.queued || stats.outbox || stats.buried) {
     throw new Error(`soak leak wave ${wave}: ${JSON.stringify(stats)}`);
   }
   for (const detail of Object.values(stats.hostsDetail)) {
-    if (detail.active || detail.held || detail.pending || detail.queued) {
+    if (detail.active || detail.held || detail.pending || detail.queued || detail.outbox || detail.buried) {
       throw new Error(`soak host leak wave ${wave}: ${JSON.stringify(detail)}`);
     }
   }
-  cancelErrors += stats.cancelErrors;
-  runtime.close();
+  cancelErrors = stats.cancelErrors;
 }
+runtime.close();
 if (cancelErrors === 0) throw new Error("soak did not exercise cancelErrors");
-console.log(`soak ok: 100 waves x 20 asks, ${cancelErrors} contained hook errors`);
+console.log(`soak ok: 1000 waves x 20 asks, ${cancelErrors} contained hook errors`);

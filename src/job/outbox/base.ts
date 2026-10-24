@@ -34,6 +34,18 @@ export class OutboxBase {
     return this.count;
   }
 
+  get buriedCount(): number {
+    return this.buried.length;
+  }
+
+  protected rememberBuried(envelope: Envelope): void {
+    this.buried.push(envelope);
+    while (this.buried.length > this.limit) {
+      this.buried.shift();
+      this.count -= 1;
+    }
+  }
+
   protected queued(): number {
     return this.count - this.buried.length;
   }

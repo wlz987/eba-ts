@@ -24,6 +24,8 @@ export interface HostStats {
   rejected: number;
   cancelErrors: number;
   pendingCancels: number;
+  outbox: number;
+  buried: number;
   lastCancelError: string | null;
 }
 
@@ -37,6 +39,8 @@ export interface RuntimeStats {
   cancelErrors: number;
   lastCancelError: string | null;
   pendingCancels: number;
+  outbox: number;
+  buried: number;
   hostsDetail: Record<string, HostStats>;
 }
 
@@ -56,6 +60,8 @@ export class Runtime extends RuntimeLifecycle {
     let rejected = 0;
     let cancelErrors = 0;
     let pendingCancels = 0;
+    let outbox = 0;
+    let buried = 0;
     let lastCancelError: string | null = null;
     const hostsDetail: Record<string, HostStats> = {};
     for (const host of this.hosts.values()) {
@@ -68,6 +74,8 @@ export class Runtime extends RuntimeLifecycle {
         rejected: core.rejectedCount,
         cancelErrors: core.cancelErrors,
         pendingCancels: core.cancelPending.size,
+        outbox: core.outbox.size,
+        buried: core.outbox.buriedCount,
         lastCancelError: core.lastCancelError,
       };
       hostsDetail[String(core.sub.actorId)] = detail;
@@ -78,6 +86,8 @@ export class Runtime extends RuntimeLifecycle {
       rejected += detail.rejected;
       cancelErrors += detail.cancelErrors;
       pendingCancels += detail.pendingCancels;
+      outbox += detail.outbox;
+      buried += detail.buried;
       lastCancelError = detail.lastCancelError ?? lastCancelError;
     }
     return {
@@ -89,6 +99,8 @@ export class Runtime extends RuntimeLifecycle {
       rejected,
       cancelErrors,
       pendingCancels,
+      outbox,
+      buried,
       lastCancelError,
       hostsDetail,
     };

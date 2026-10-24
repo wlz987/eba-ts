@@ -20,7 +20,7 @@ export class OutboxQueue extends OutboxSend {
     const group = this.groups.get(topic);
     if (group === undefined || group.items[0] !== envelope) {
       if (!this.contains(envelope)) {
-        this.buried.push(envelope);
+        this.rememberBuried(envelope);
         this.count += 1;
       }
       return;
@@ -28,7 +28,7 @@ export class OutboxQueue extends OutboxSend {
     delete this.candidates[topic];
     group.interest.dispose();
     group.items.shift();
-    this.buried.push(envelope);
+    this.rememberBuried(envelope);
     if (group.items.length > 0) {
       this.candidates[topic] = null;
       this.signal.notify(DELIVERY);
