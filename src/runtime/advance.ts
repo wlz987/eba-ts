@@ -1,3 +1,4 @@
+import type { EnvelopeId } from "../envelope/ids.ts";
 import type { Clock } from "../time/clock.ts";
 import { pinClock, readClock } from "../time/clock.ts";
 import type { Core } from "../job/core.ts";
@@ -14,6 +15,22 @@ export abstract class RuntimeAdvance extends RuntimeAdmission {
 
   protected abstract answerSpent(error: DeliveryError, clock: Clock): void;
   protected abstract written(host: JobHost): Core;
+
+  private drainCancelled(): EnvelopeId[] {
+    const cancelled: EnvelopeId[] = [];
+    for (const host of [...this.hosts.values()]) {
+      cancelled.push(...coreOf(host).takeCancelled());
+    }
+    if (cancelled.length > 0) {
+      for (const host of [...this.hosts.values()]) {
+        const core = coreOf(host);
+        core.cancelQueued(cancelled);
+        core.cancelHeld(cancelled);
+        core.cancelJobs(cancelled);
+      }
+    }
+    return cancelled;
+  }
 
   advance(): boolean {
     this.enter();
@@ -33,6 +50,9 @@ export abstract class RuntimeAdvance extends RuntimeAdmission {
         }
       }
       this.agenda.due(now);
+      if (this.drainCancelled().length > 0) {
+        for (const host of [...this.hosts.values()]) this.sync(coreOf(host));
+      }
       const count = this.agenda.readySize;
       let progressed = false;
       for (let index = 0; index < count; index += 1) {
@@ -55,6 +75,7 @@ export abstract class RuntimeAdvance extends RuntimeAdmission {
           this.sync(core);
         }
       }
+      this.drainCancelled();
       for (const host of [...this.hosts.values()]) {
         const core = coreOf(host);
         if (core.state !== "running" && core.state !== "draining") continue;

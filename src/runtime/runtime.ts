@@ -16,11 +16,53 @@ import { Inbox } from "../mail/inbox.ts";
 import { Pending } from "./signals.ts";
 import { RuntimeLifecycle } from "./lifecycle.ts";
 
+export interface RuntimeStats {
+  hosts: number;
+  active: number;
+  held: number;
+  queued: number;
+  pending: number;
+  rejected: number;
+  cancelErrors: number;
+  lastCancelError: string | null;
+}
+
 export class Runtime extends RuntimeLifecycle {
   private frontCaller: Caller | null = null;
 
   constructor(bus: Bus, clock: Clock, idGen: IdGen) {
     super(bus, clock, idGen);
+    bus.claim(this);
+  }
+
+  stats(): RuntimeStats {
+    let active = 0;
+    let held = 0;
+    let queued = 0;
+    let pending = 0;
+    let rejected = 0;
+    let cancelErrors = 0;
+    let lastCancelError: string | null = null;
+    for (const host of this.hosts.values()) {
+      const core = coreOf(host);
+      active += core.jobs.size;
+      held += core.held.size;
+      queued += core.queue.size;
+      pending += core.book.size;
+      rejected += core.rejectedCount;
+      cancelErrors += core.cancelErrors;
+      lastCancelError = core.lastCancelError ?? lastCancelError;
+    }
+    return {
+      hosts: this.hosts.size,
+      active,
+      held,
+      queued,
+      pending,
+      rejected,
+      cancelErrors,
+      lastCancelError,
+    };
   }
 
   ask(
@@ -29,16 +71,11 @@ export class Runtime extends RuntimeLifecycle {
     from: ActorId | string = "caller",
     timeoutMs?: number | null,
   ): Pending {
-    if (this.frontCaller === null) {
-      const caller = new Caller(new Inbox(8).receiver(), this.idGen, 256, "sys.ask");
-      this.add(caller);
-      this.frontCaller = caller;
-    }
     let resolve!: (completion: Completion) => void;
     const ready = new Promise<Completion>((done) => {
       resolve = done;
     });
-    const envelope = this.frontCaller.admit({
+    const envelope = this.front().admit({
       topic,
       payload,
       from,
@@ -46,6 +83,33 @@ export class Runtime extends RuntimeLifecycle {
       pay: (completion) => resolve(completion),
     });
     return new Pending(envelope, ready);
+  }
+
+  askWith(
+    topic: string,
+    payload: unknown,
+    pay: (completion: Completion) => void,
+    from: ActorId | string = "caller",
+    timeoutMs?: number | null,
+  ): Envelope {
+    // Hand the completion to pay; it runs once inside a turn and must not re-enter the runtime.
+    return this.front().admit({
+      topic,
+      payload,
+      from,
+      timeoutMs: timeoutMs ?? null,
+      pay,
+    });
+  }
+
+  private front(): Caller {
+    if (this.frontCaller === null) {
+      // front inbox matches the caller active limit
+      const caller = new Caller(new Inbox(256).receiver(), this.idGen, 256, "sys.ask");
+      this.add(caller);
+      this.frontCaller = caller;
+    }
+    return this.frontCaller;
   }
 
   tell(topic: string, payload: unknown, from: ActorId | string = "caller"): void {

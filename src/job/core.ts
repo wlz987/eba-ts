@@ -1,4 +1,6 @@
-import type { Envelope } from "../envelope/envelope.ts";
+import { cancelJob } from "./cancel.ts";
+import { Envelope } from "../envelope/envelope.ts";
+import { remove } from "../mail/inbox.ts";
 import type { ActorId, EnvelopeId } from "../envelope/ids.ts";
 import type { Receiver } from "../mail/inbox.ts";
 import { readSignal } from "../mail/inbox.ts";
@@ -43,6 +45,8 @@ export class Core {
   busy = false;
   state: HostState = "running";
   rejectedCount = 0;
+  cancelErrors = 0;
+  lastCancelError: string | null = null;
   abandoned: Envelope[] | null = null;
   pending: Envelope | null = null;
   pendingJob: Job | null = null;
@@ -66,6 +70,32 @@ export class Core {
     this.sub = new Subscriber(options.actorId, options.receiver, patternText);
     this.signal = readSignal(this.sub.inbox);
     this.outbox = new Outbox(outboxChecked, this.signal);
+  }
+
+  takeCancelled(): EnvelopeId[] {
+    return this.book.takeCancelled();
+  }
+
+  cancelJobs(requestIds: EnvelopeId[]): void {
+    for (const requestId of requestIds) {
+      const job = this.jobs.get(requestId);
+      if (job !== undefined) cancelJob(this, job);
+    }
+  }
+
+  cancelQueued(requestIds: EnvelopeId[]): void {
+    if (requestIds.length === 0) return;
+    const wanted = new Set(requestIds);
+    this.queue.remove((item) => item instanceof Envelope && wanted.has(item.header.id));
+    for (const requestId of requestIds) remove(this.sub.inbox, requestId);
+  }
+
+  cancelHeld(requestIds: EnvelopeId[]): void {
+    for (const requestId of requestIds) {
+      const reply = this.held.get(requestId);
+      if (reply === undefined || reply.isClosed || reply.take() !== null) continue;
+      reply.fail("cancelled");
+    }
   }
 
   beginClose(): Envelope[] {

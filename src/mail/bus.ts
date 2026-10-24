@@ -1,9 +1,10 @@
 import type { Envelope } from "../envelope/envelope.ts";
 import { snapshotEnvelope } from "../envelope/envelope.ts";
 import { splitTopic } from "../envelope/topic.ts";
-import { canEnqueue, enqueue, markRead, readSignal, watchSpace } from "./inbox.ts";
+import { canEnqueue, enqueue, markRead, readSignal, replaceTopic, watchSpace } from "./inbox.ts";
 import type { Inbox } from "./inbox.ts";
 import { MailboxFull } from "../errors.ts";
+import { EnvelopeBuildError } from "../envelope/errors.ts";
 import { Interest } from "../notify/watch.ts";
 import type { AgendaLike } from "../notify/signal.ts";
 import { BusBase } from "./bus/base.ts";
@@ -11,6 +12,19 @@ import { Offer } from "./bus/types.ts";
 export { Subscription } from "./bus/types.ts";
 
 export class Bus extends BusBase {
+  private owner: object | null = null;
+
+  claim(owner: object): void {
+    if (this.owner !== null && this.owner !== owner) {
+      throw new Error("bus already belongs to a runtime");
+    }
+    this.owner = owner;
+  }
+
+  release(owner: object): void {
+    if (this.owner === owner) this.owner = null;
+  }
+
   canPublish(envelope: unknown): boolean {
     let snapshot: Envelope;
     let parts: string[];
@@ -55,6 +69,31 @@ export class Bus extends BusBase {
     for (const box of targets) enqueue(box, snapshot);
     for (const box of targets) markRead(box);
     return true;
+  }
+
+  publishBestEffort(envelope: unknown): number {
+    const snapshot = snapshotEnvelope(envelope);
+    const kind = snapshot.header.address.kind;
+    const targets = this.routes.snapshotMatch(
+      splitTopic(snapshot.header.topic),
+    );
+    const ready = targets.filter((box) => canEnqueue(box, kind));
+    for (const box of ready) enqueue(box, snapshot);
+    for (const box of ready) markRead(box);
+    return targets.length - ready.length;
+  }
+
+  publishLatest(envelope: unknown): number {
+    const snapshot = snapshotEnvelope(envelope);
+    if (snapshot.header.address.kind !== "event") {
+      throw new EnvelopeBuildError("publish_latest requires an event");
+    }
+    const targets = this.routes.snapshotMatch(
+      splitTopic(snapshot.header.topic),
+    );
+    const accepted = targets.filter((box) => replaceTopic(box, snapshot));
+    for (const box of accepted) markRead(box);
+    return targets.length - accepted.length;
   }
 
   holdWait(requestId: string): void {

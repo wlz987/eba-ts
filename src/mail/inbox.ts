@@ -83,4 +83,4 @@ export class Inbox {
   }
 }
 import { remaining } from "./inbox_ops.ts";
-export { canEnqueue, enqueue, find, forgetRoute, heldCount, holdsKind, markRead, pauseWork, pullKind, readSignal, rememberRoute, remaining, replyTopic, takeSeized, watchSpace } from "./inbox_ops.ts";
+export { canEnqueue, enqueue, find, forgetRoute, heldCount, holdsKind, markRead, pauseWork, pullKind, readSignal, rememberRoute, remaining, remove, replaceTopic, replyTopic, takeSeized, watchSpace } from "./inbox_ops.ts";

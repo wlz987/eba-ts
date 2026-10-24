@@ -13,6 +13,7 @@ import type { Receiver } from "../mail/inbox.ts";
 import { canEnqueue, enqueue, markRead, replyTopic } from "../mail/inbox.ts";
 import type { Core } from "./core.ts";
 import { Call, Wait, settle } from "./call.ts";
+import { drop } from "./ending.ts";
 export { Call, settle, settled } from "./call.ts";
 
 const ADMIT = "sys.admit";
@@ -86,33 +87,13 @@ export class Caller extends JobHost {
   }
 }
 
-function end(caller: Caller, core: Core, job: Job): boolean {
+function end(_caller: Caller, core: Core, job: Job): boolean {
   const call = job.root.payload;
   if (!(call instanceof Call) || call.requestId === null) return false;
-  const inbox = core.sub.inbox;
-  if (inbox.isClosed) throw new Error("inbox closed");
-  if (inbox.remaining() < 1) {
-    markRead(inbox);
-    throw new MailboxFull("target inbox full");
-  }
-  if (
-    !enqueue(
-      inbox,
-      makeEnvelope({
-        topic: replyTopic(inbox),
-        payload: errPayload("cancelled"),
-        from: core.sub.actorId,
-        cause: job.root.header.cause,
-        kind: "result",
-        correlationId: call.requestId,
-        idGen: caller.idGen,
-      }),
-    )
-  ) {
-    markRead(inbox);
-    throw new MailboxFull("target inbox full");
-  }
-  markRead(inbox);
+  core.book.cancel(job.root.header.id);
+  drop(core, job);
+  markRead(core.sub.inbox);
+  call.complete(new Completion(call.requestId, errPayload("cancelled")));
   return true;
 }
 

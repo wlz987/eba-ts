@@ -76,7 +76,10 @@ export abstract class RuntimeLifecycle extends RuntimeAdvance {
         this.agenda.remove(actor);
         this.hosts.delete(actor);
       }
-      if (actorId === undefined || actorId === null) this.state = "closed";
+      if (actorId === undefined || actorId === null) {
+        this.state = "closed";
+        this.bus.release(this);
+      }
       return abandoned;
     } finally {
       this.busy = false;

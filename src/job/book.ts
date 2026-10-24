@@ -17,6 +17,7 @@ export class Continuation {
 export class RequestBook {
   private records = new Records();
   private owners = new Map<EnvelopeId, Set<EnvelopeId>>();
+  private cancelled: EnvelopeId[] = [];
 
   get size(): number {
     return this.records.size;
@@ -82,7 +83,14 @@ export class RequestBook {
     for (const requestId of owned ? [...owned] : []) {
       this.records.finish(requestId);
       this.forget(owner, requestId);
+      this.cancelled.push(requestId);
     }
+  }
+
+  takeCancelled(): EnvelopeId[] {
+    const found = this.cancelled;
+    this.cancelled = [];
+    return found;
   }
 
   private claim(claim: Claim | null): Claim | null {

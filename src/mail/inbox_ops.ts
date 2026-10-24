@@ -20,6 +20,24 @@ export function enqueue(inbox: Inbox, envelope: Envelope): boolean {
   return true;
 }
 
+export function replaceTopic(inbox: Inbox, envelope: Envelope): boolean {
+  const state = stateOf(inbox);
+  const kind = envelope.header.address.kind;
+  if (state.closed || (state.workPaused && (kind === "event" || kind === "request"))) {
+    return false;
+  }
+  const kept = state.items.filter(
+    (item) => item.header.topic !== envelope.header.topic,
+  );
+  if (kept.length >= inbox.capacity) return false;
+  const removed = state.items.length - kept.length;
+  state.items.length = 0;
+  state.items.push(...kept);
+  state.items.push(envelope);
+  if (removed > 0) state.space.notify();
+  return true;
+}
+
 export function canEnqueue(inbox: Inbox, kind: string): boolean {
   const state = stateOf(inbox);
   return (
@@ -57,6 +75,20 @@ export function pullKind(inbox: Inbox, kind: string): Envelope | null {
     return item;
   }
   return null;
+}
+
+export function remove(inbox: Inbox, envelopeId: EnvelopeId): boolean {
+  const state = stateOf(inbox);
+  const items = state.items;
+  const full = items.length === inbox.capacity;
+  for (let index = 0; index < items.length; index += 1) {
+    if (items[index]!.header.id !== envelopeId) continue;
+    items.splice(index, 1);
+    if (items.length === 0) state.read.clear(READ);
+    if (full) state.space.notify();
+    return true;
+  }
+  return false;
 }
 
 export function find(inbox: Inbox, envelopeId: EnvelopeId): Envelope | null {

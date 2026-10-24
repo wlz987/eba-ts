@@ -12,6 +12,13 @@ export class Queue {
   get full(): boolean {
     return this.items.length >= this.capacity;
   }
+  remove(predicate: (item: unknown) => boolean): number {
+    const kept = this.items.filter((item) => !predicate(item));
+    const removed = this.items.length - kept.length;
+    this.items = kept;
+    return removed;
+  }
+
   push(item: unknown): boolean {
     if (this.full) return false;
     this.items.push(item);
