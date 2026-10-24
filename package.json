@@ -8,7 +8,8 @@
   "types": "dist/index.d.ts",
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "HISTORY.md"
   ],
   "scripts": {
     "example": "node examples/order.ts && node examples/bus.ts",
