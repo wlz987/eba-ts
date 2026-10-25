@@ -1,5 +1,7 @@
 import {
   Bus,
+  Caller,
+  Drive,
   Inbox,
   Job,
   JobHost,
@@ -11,8 +13,6 @@ import {
   okPayload,
   resultError,
 } from "../src/index.ts";
-import { Caller } from "../src/job/index.ts";
-import { Drive } from "../src/runtime/drive.ts";
 import type { Envelope } from "../src/envelope/envelope.ts";
 import type { CompletionLike, Context } from "../src/job/job.ts";
 

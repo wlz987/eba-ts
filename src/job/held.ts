@@ -21,6 +21,7 @@ export function resolveHeld(core: Core, bus: Bus, idGen: IdGen): boolean {
     }
     core.held.delete(requestId);
     state.held = false;
+    reply.close();
     const result = new Matchmaker(state.root.header).reply(
       body,
       core.sub.actorId,
@@ -34,6 +35,9 @@ export function resolveHeld(core: Core, bus: Bus, idGen: IdGen): boolean {
 }
 
 export function closeHeld(core: Core): void {
-  for (const reply of core.held.values()) reply.close();
+  for (const reply of [...core.held.values()]) {
+    reply.cancel("host_closing");
+    reply.close();
+  }
   core.held.clear();
 }

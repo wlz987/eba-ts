@@ -11,10 +11,12 @@ const begun: number[] = [];
 const begunCount = (): number => begun.length;
 const finishedCount = (): number => finished.length;
 
+let heldSignal: AbortSignal = new AbortController().signal;
+
 class Hold extends Job {
   override begin(ctx: Context): void {
     begun.push(1);
-    ctx.hold();
+    heldSignal = ctx.hold().signal;
   }
 
   override onFinished(body: Record<string, unknown> | null): void {
@@ -100,6 +102,9 @@ if (!cancelled || body?.ok !== false || body.error !== "cancelled") {
 const holder = finished[0] as { ok?: boolean; error?: string } | null;
 if (finished.length !== 1 || holder?.ok !== false || holder.error !== "cancelled") {
   throw new Error(`orphan holder: ${JSON.stringify(finished)}`);
+}
+if (!heldSignal.aborted) {
+  throw new Error("orphan holder signal not aborted");
 }
 
 const before = begunCount();

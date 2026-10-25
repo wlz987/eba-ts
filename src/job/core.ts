@@ -111,7 +111,7 @@ export class Core {
     for (const requestId of requestIds) {
       const reply = this.held.get(requestId);
       if (reply === undefined || reply.isClosed || reply.take() !== null) continue;
-      reply.fail("cancelled");
+      reply.cancel("cancelled");
     }
   }
 
