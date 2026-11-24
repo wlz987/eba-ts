@@ -1,0 +1,47 @@
+{
+  "name": "eba-ts",
+  "version": "0.2.0",
+  "description": "进程内、单写者、合作式的 EBA 运行时",
+  "license": "MIT",
+  "repository": "https://github.com/wlz987/eba-ts",
+  "homepage": "https://github.com/wlz987/eba-ts",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && node scripts/rewrite-aliases.mjs",
+    "check": "npm run typecheck && npm run lint",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "conformance": "npm run build && node --test test/contract.test.mjs",
+    "coverage": "npm run build && node --experimental-test-coverage --test-coverage-lines=90 --test test/*.test.mjs",
+    "prepack": "npm run build"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.19.2",
+    "eslint": "^10.14.0",
+    "globals": "^17.14.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.1"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "imports": {
+    "#src/*.js": "./src/*.ts"
+  },
+  "sideEffects": false
+}
