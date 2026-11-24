@@ -21,7 +21,8 @@
     "test": "npm run build && node --test test/*.test.mjs",
     "conformance": "npm run build && node --test test/contract.test.mjs",
     "coverage": "npm run build && node --experimental-test-coverage --test-coverage-lines=90 --test test/*.test.mjs",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "prepare": "npm run build"
   },
   "engines": {
     "node": ">=24"
